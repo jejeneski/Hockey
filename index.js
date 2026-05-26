@@ -6,7 +6,7 @@ const app = express();
 
 // 🌐 KEEP ALIVE
 app.get("/", (req, res) => {
-  res.send("🏒 NHL Bot Online");
+  res.send("🏒 NHL BOT ONLINE");
 });
 
 app.listen(3000, () => {
@@ -18,14 +18,15 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// 🔐 ENV
+// 🔐 ENV VARIABLES
 const TOKEN = process.env.TOKEN;
 
 const CHANNELS = {
   live: process.env.CHANNEL_LIVE,
   standings: process.env.CHANNEL_STANDINGS,
   players: process.env.CHANNEL_PLAYERS,
-  playoffs: process.env.CHANNEL_PLAYOFFS
+  playoffs: process.env.CHANNEL_PLAYOFFS,
+  news: process.env.CHANNEL_NEWS
 };
 
 // 🧠 STORAGE
@@ -33,7 +34,9 @@ let liveMessages = {};
 let standingsMessage = null;
 let playersMessage = null;
 let playoffsMessage = null;
+
 let lastScores = {};
+let sentNews = [];
 
 // 🎨 TEAM COLORS
 function getTeamColor(team) {
@@ -81,7 +84,7 @@ function getTeamLogo(team) {
   return `https://assets.nhle.com/logos/nhl/svg/${team}_light.svg`;
 }
 
-// 🔗 GAMECENTER LINK
+// 🔗 GAMECENTER
 function getGameLink(id) {
   return `https://www.nhl.com/gamecenter/${id}`;
 }
@@ -108,7 +111,7 @@ function getWinProbability(game) {
   };
 }
 
-// 🏒 GET TODAY GAMES
+// 🏒 TODAY GAMES
 async function getGames() {
 
   const date = new Date()
@@ -122,7 +125,7 @@ async function getGames() {
   return res.data.gameWeek?.[0]?.games || [];
 }
 
-// 🧱 CREATE OR GET MESSAGE
+// 🧱 CREATE LIVE MESSAGE
 async function getOrCreateMessage(channel, game) {
 
   const id = game.id;
@@ -137,7 +140,7 @@ async function getOrCreateMessage(channel, game) {
     .setThumbnail(
       getTeamLogo(game.homeTeam.abbrev)
     )
-    .setDescription("Chargement...")
+    .setDescription("Loading...")
     .setFooter({
       text: "NHL Live Center"
     })
@@ -152,7 +155,7 @@ async function getOrCreateMessage(channel, game) {
   return msg;
 }
 
-// 🔴 LIVE MATCHES
+// 🔴 LIVE GAMES
 async function updateLiveMatches() {
 
   try {
@@ -172,6 +175,9 @@ async function updateLiveMatches() {
 
       const hs = g.homeTeam.score || 0;
       const as = g.awayTeam.score || 0;
+
+      const shotsH = g.homeTeam.sog || 0;
+      const shotsA = g.awayTeam.sog || 0;
 
       const period =
         g.periodDescriptor?.number || 1;
@@ -206,7 +212,8 @@ async function updateLiveMatches() {
             `🟦 MATCH DU JOUR\n\n` +
             `🕒 ${startTime}\n\n` +
             `📊 ${home}: ${prob.home}%\n` +
-            `📊 ${away}: ${prob.away}%`
+            `📊 ${away}: ${prob.away}%\n\n` +
+            `🏒 ${away} vs ${home}`
           );
       }
 
@@ -215,9 +222,13 @@ async function updateLiveMatches() {
 
         if (hs > as) {
           embed.setColor(0x00cc66);
-        } else if (as > hs) {
+        }
+
+        else if (as > hs) {
           embed.setColor(0xff3333);
-        } else {
+        }
+
+        else {
           embed.setColor(0xffcc00);
         }
 
@@ -226,7 +237,8 @@ async function updateLiveMatches() {
           `${away} ${as} - ${hs} ${home}\n\n` +
           `⏱️ P${period} • ${clock}\n\n` +
           `📊 ${home}: ${prob.home}%\n` +
-          `📊 ${away}: ${prob.away}%`
+          `📊 ${away}: ${prob.away}%\n\n` +
+          `🥅 Shots: ${shotsA}-${shotsH}`
         );
 
         // 🚨 GOAL ALERT
@@ -236,6 +248,7 @@ async function updateLiveMatches() {
           lastScores[id] &&
           lastScores[id] !== scoreKey
         ) {
+
           await channel.send(
             `🚨 BUT ! ${away} ${as} - ${hs} ${home}`
           );
@@ -251,7 +264,8 @@ async function updateLiveMatches() {
           .setColor(0x666666)
           .setDescription(
             `⚫ FINAL\n\n` +
-            `${away} ${as} - ${hs} ${home}`
+            `${away} ${as} - ${hs} ${home}\n\n` +
+            `🥅 Shots: ${shotsA}-${shotsH}`
           );
       }
 
@@ -308,11 +322,8 @@ async function sendStandings() {
     const embed = new EmbedBuilder()
       .setTitle("🏆 NHL STANDINGS")
       .setColor(0x0099ff)
-      .setThumbnail(
-        "https://upload.wikimedia.org/wikipedia/en/3/3a/05_NHL_Shield.svg"
-      )
       .setFooter({
-        text: "Updated live"
+        text: "Updated Live"
       })
       .setTimestamp();
 
@@ -337,7 +348,7 @@ async function sendStandings() {
         inline: true
       },
       {
-        name: "🏙️ Metropolitan",
+        name: "🏙️ Metro",
         value: formatDivision(metro),
         inline: true
       },
@@ -394,7 +405,7 @@ async function sendTopPlayers() {
         getTeamLogo(players[0].teamAbbrev)
       )
       .setFooter({
-        text: "NHL Top Players"
+        text: "Top Points"
       })
       .setTimestamp();
 
@@ -519,6 +530,54 @@ ${west[4].teamAbbrev.default} ──┘
   }
 }
 
+// 📰 NHL NEWS
+async function sendNews() {
+
+  try {
+
+    const channel = await client.channels.fetch(
+      CHANNELS.news
+    );
+
+    const res = await axios.get(
+      "https://api-web.nhle.com/v1/news/now"
+    );
+
+    const articles = res.data.articles || [];
+
+    for (const article of articles.slice(0, 5)) {
+
+      if (sentNews.includes(article.id)) {
+        continue;
+      }
+
+      sentNews.push(article.id);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📰 ${article.headline}`)
+        .setURL(article.url)
+        .setDescription(
+          article.subhead || "NHL News"
+        )
+        .setColor(0x00ccff)
+        .setTimestamp();
+
+      if (article.image?.cuts?.[0]?.src) {
+        embed.setImage(
+          article.image.cuts[0].src
+        );
+      }
+
+      await channel.send({
+        embeds: [embed]
+      });
+    }
+
+  } catch (err) {
+    console.log(err);
+  }
+}
+
 // ✅ READY
 client.once("clientReady", () => {
 
@@ -529,6 +588,7 @@ client.once("clientReady", () => {
   sendStandings();
   sendTopPlayers();
   sendPlayoffBracket();
+  sendNews();
 
   // 🔄 AUTO UPDATE
   setInterval(updateLiveMatches, 30000);
@@ -538,6 +598,8 @@ client.once("clientReady", () => {
   setInterval(sendTopPlayers, 3600000);
 
   setInterval(sendPlayoffBracket, 3600000);
+
+  setInterval(sendNews, 900000);
 });
 
 // 🔑 LOGIN
