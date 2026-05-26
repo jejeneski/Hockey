@@ -18,7 +18,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// 🔐 VARIABLES
+// 🔐 ENV VARIABLES
 const TOKEN = process.env.TOKEN;
 
 const CHANNELS = {
@@ -28,8 +28,12 @@ const CHANNELS = {
   playoffs: process.env.CHANNEL_PLAYOFFS
 };
 
-// 🧠 STOCKAGE
+// 🧠 MESSAGE STORAGE
 let liveMessages = {};
+let standingsMessage = null;
+let playersMessage = null;
+let playoffsMessage = null;
+
 let lastScores = {};
 
 // 🎨 TEAM COLORS
@@ -74,50 +78,17 @@ function getTeamColor(team) {
 
 // 🏒 TEAM LOGOS
 function getTeamLogo(team) {
-  const logos = {
-    ANA: "https://assets.nhle.com/logos/nhl/svg/ANA_light.svg",
-    BOS: "https://assets.nhle.com/logos/nhl/svg/BOS_light.svg",
-    BUF: "https://assets.nhle.com/logos/nhl/svg/BUF_light.svg",
-    CAR: "https://assets.nhle.com/logos/nhl/svg/CAR_light.svg",
-    CBJ: "https://assets.nhle.com/logos/nhl/svg/CBJ_light.svg",
-    CGY: "https://assets.nhle.com/logos/nhl/svg/CGY_light.svg",
-    CHI: "https://assets.nhle.com/logos/nhl/svg/CHI_light.svg",
-    COL: "https://assets.nhle.com/logos/nhl/svg/COL_light.svg",
-    DAL: "https://assets.nhle.com/logos/nhl/svg/DAL_light.svg",
-    DET: "https://assets.nhle.com/logos/nhl/svg/DET_light.svg",
-    EDM: "https://assets.nhle.com/logos/nhl/svg/EDM_light.svg",
-    FLA: "https://assets.nhle.com/logos/nhl/svg/FLA_light.svg",
-    LAK: "https://assets.nhle.com/logos/nhl/svg/LAK_light.svg",
-    MIN: "https://assets.nhle.com/logos/nhl/svg/MIN_light.svg",
-    MTL: "https://assets.nhle.com/logos/nhl/svg/MTL_light.svg",
-    NJD: "https://assets.nhle.com/logos/nhl/svg/NJD_light.svg",
-    NSH: "https://assets.nhle.com/logos/nhl/svg/NSH_light.svg",
-    NYI: "https://assets.nhle.com/logos/nhl/svg/NYI_light.svg",
-    NYR: "https://assets.nhle.com/logos/nhl/svg/NYR_light.svg",
-    OTT: "https://assets.nhle.com/logos/nhl/svg/OTT_light.svg",
-    PHI: "https://assets.nhle.com/logos/nhl/svg/PHI_light.svg",
-    PIT: "https://assets.nhle.com/logos/nhl/svg/PIT_light.svg",
-    SEA: "https://assets.nhle.com/logos/nhl/svg/SEA_light.svg",
-    SJS: "https://assets.nhle.com/logos/nhl/svg/SJS_light.svg",
-    STL: "https://assets.nhle.com/logos/nhl/svg/STL_light.svg",
-    TBL: "https://assets.nhle.com/logos/nhl/svg/TBL_light.svg",
-    TOR: "https://assets.nhle.com/logos/nhl/svg/TOR_light.svg",
-    VAN: "https://assets.nhle.com/logos/nhl/svg/VAN_light.svg",
-    VGK: "https://assets.nhle.com/logos/nhl/svg/VGK_light.svg",
-    WPG: "https://assets.nhle.com/logos/nhl/svg/WPG_light.svg",
-    WSH: "https://assets.nhle.com/logos/nhl/svg/WSH_light.svg"
-  };
-
-  return logos[team];
+  return `https://assets.nhle.com/logos/nhl/svg/${team}_light.svg`;
 }
 
-// 🔗 GAMECENTER
+// 🔗 GAMECENTER LINK
 function getGameLink(id) {
   return `https://www.nhl.com/gamecenter/${id}`;
 }
 
-// 📊 PROBABILITÉ
+// 📊 WIN PROBABILITY
 function getWinProbability(game) {
+
   const hs = game.homeTeam.score || 0;
   const as = game.awayTeam.score || 0;
 
@@ -139,6 +110,7 @@ function getWinProbability(game) {
 
 // 🏒 GET GAMES
 async function getGames() {
+
   const date = new Date().toISOString().split("T")[0];
 
   const res = await axios.get(
@@ -148,8 +120,9 @@ async function getGames() {
   return res.data.gameWeek?.[0]?.games || [];
 }
 
-// 🧱 CREATE MESSAGE
+// 🧱 CREATE LIVE MESSAGE
 async function getOrCreateMessage(channel, game) {
+
   const id = game.id;
 
   if (liveMessages[id]) {
@@ -160,8 +133,8 @@ async function getOrCreateMessage(channel, game) {
     .setTitle(`🏒 ${game.awayTeam.abbrev} vs ${game.homeTeam.abbrev}`)
     .setURL(getGameLink(id))
     .setThumbnail(getTeamLogo(game.homeTeam.abbrev))
-    .setDescription("Chargement...")
     .setColor(getTeamColor(game.homeTeam.abbrev))
+    .setDescription("Chargement...")
     .setFooter({
       text: "NHL Live Center"
     })
@@ -178,7 +151,9 @@ async function getOrCreateMessage(channel, game) {
 
 // 🔴 LIVE MATCHES
 async function updateLiveMatches() {
+
   try {
+
     const channel = await client.channels.fetch(
       CHANNELS.live
     );
@@ -230,7 +205,7 @@ async function updateLiveMatches() {
         `🔴 LIVE\n\n` +
         `${away} ${as} - ${hs} ${home}\n\n` +
         `📊 ${home}: ${prob.home}% | ${away}: ${prob.away}%\n` +
-        `⏱️ P${period} - ${clock}`
+        `⏱️ P${period} • ${clock}`
       );
 
       // 🚨 GOAL ALERT
@@ -262,8 +237,9 @@ async function updateLiveMatches() {
   }
 }
 
-// 🏆 STANDINGS
+// 🏆 NHL STANDINGS
 async function sendStandings() {
+
   try {
 
     const channel = await client.channels.fetch(
@@ -276,111 +252,80 @@ async function sendStandings() {
 
     const standings = res.data.standings;
 
-    const divisions = {};
-    const conferences = {};
+    const east = standings
+      .filter(t => t.conferenceName === "Eastern")
+      .sort((a, b) => b.points - a.points);
 
-    for (const team of standings) {
+    const west = standings
+      .filter(t => t.conferenceName === "Western")
+      .sort((a, b) => b.points - a.points);
 
-      const div = team.divisionName;
+    const embed = new EmbedBuilder()
+      .setTitle("🏆 NHL STANDINGS")
+      .setThumbnail(
+        "https://upload.wikimedia.org/wikipedia/en/3/3a/05_NHL_Shield.svg"
+      )
+      .setColor(0x0099ff)
+      .setFooter({
+        text: "NHL Standings"
+      })
+      .setTimestamp();
 
-      if (!divisions[div]) {
-        divisions[div] = [];
+    let eastText = "";
+    let westText = "";
+
+    east.slice(0, 16).forEach((t, i) => {
+
+      let clinch = "";
+
+      if (i === 0) clinch = "z";
+      else if (i <= 7) clinch = "x";
+
+      eastText +=
+        `**${i + 1}. ${clinch} ${t.teamAbbrev.default}**\n` +
+        `${t.points} PTS • ${t.wins}-${t.losses}-${t.otLosses}\n` +
+        `🔥 ${t.streakCode}\n\n`;
+    });
+
+    west.slice(0, 16).forEach((t, i) => {
+
+      let clinch = "";
+
+      if (i === 0) clinch = "z";
+      else if (i <= 7) clinch = "x";
+
+      westText +=
+        `**${i + 1}. ${clinch} ${t.teamAbbrev.default}**\n` +
+        `${t.points} PTS • ${t.wins}-${t.losses}-${t.otLosses}\n` +
+        `🔥 ${t.streakCode}\n\n`;
+    });
+
+    embed.addFields(
+      {
+        name: "🌎 EASTERN",
+        value: eastText,
+        inline: true
+      },
+      {
+        name: "🌎 WESTERN",
+        value: westText,
+        inline: true
       }
+    );
 
-      divisions[div].push(team);
+    embed.setDescription(
+      "📖 x = Playoff Spot • z = Conference Leader"
+    );
 
-      const conf = team.conferenceName;
+    if (!standingsMessage) {
 
-      if (!conferences[conf]) {
-        conferences[conf] = [];
-      }
-
-      conferences[conf].push(team);
-    }
-
-    // 🏆 DIVISIONS
-    for (const div in divisions) {
-
-      const embed = new EmbedBuilder()
-        .setTitle(`🏆 ${div.toUpperCase()} DIVISION`)
-        .setThumbnail(
-          "https://upload.wikimedia.org/wikipedia/en/3/3a/05_NHL_Shield.svg"
-        )
-        .setColor(0x0099ff)
-        .setFooter({
-          text: "NHL Standings"
-        })
-        .setTimestamp();
-
-      let desc = "";
-
-      divisions[div]
-        .sort((a, b) => b.points - a.points)
-        .slice(0, 8)
-        .forEach((t, i) => {
-
-          let clinch = "";
-
-          if (i === 0) clinch = "y";
-          if (t.clinchIndicator === "x") clinch = "x";
-          if (t.clinchIndicator === "z") clinch = "z";
-
-          desc +=
-            `**${i + 1}. ${clinch} ${t.teamName.default}**\n` +
-            `🏆 ${t.points} PTS\n` +
-            `📊 ${t.wins}-${t.losses}-${t.otLosses}\n` +
-            `🔥 ${t.streakCode}\n\n`;
-        });
-
-      desc +=
-`\n📖 LEGEND
-x = Playoff spot
-y = Division champion
-z = Conference leader`;
-
-      embed.setDescription(desc);
-
-      await channel.send({
+      standingsMessage = await channel.send({
         embeds: [embed]
       });
-    }
 
-    // 🌎 CONFERENCES
-    for (const conf in conferences) {
+    } else {
 
-      const embed = new EmbedBuilder()
-        .setTitle(`🌎 ${conf.toUpperCase()} CONFERENCE`)
-        .setThumbnail(
-          "https://upload.wikimedia.org/wikipedia/en/3/3a/05_NHL_Shield.svg"
-        )
-        .setColor(0x00cc99)
-        .setFooter({
-          text: "NHL Conference Standings"
-        })
-        .setTimestamp();
-
-      let desc = "";
-
-      conferences[conf]
-        .sort((a, b) => b.points - a.points)
-        .slice(0, 16)
-        .forEach((t, i) => {
-
-          let clinch = "";
-
-          if (i === 0) clinch = "z";
-          else if (i <= 7) clinch = "x";
-
-          desc +=
-            `**${i + 1}. ${clinch} ${t.teamName.default}**\n` +
-            `🏆 ${t.points} PTS\n` +
-            `📊 ${t.wins}-${t.losses}-${t.otLosses}\n` +
-            `🔥 ${t.streakCode}\n\n`;
-        });
-
-      embed.setDescription(desc);
-
-      await channel.send({
+      await standingsMessage.edit({
         embeds: [embed]
       });
     }
@@ -392,6 +337,7 @@ z = Conference leader`;
 
 // ⭐ TOP PLAYERS
 async function sendTopPlayers() {
+
   try {
 
     const channel = await client.channels.fetch(
@@ -406,7 +352,7 @@ async function sendTopPlayers() {
       res.data.pointsLeaders.slice(0, 10);
 
     const embed = new EmbedBuilder()
-      .setTitle("⭐ TOP POINTEURS NHL")
+      .setTitle("⭐ NHL TOP PLAYERS")
       .setThumbnail(
         getTeamLogo(players[0].teamAbbrev)
       )
@@ -428,9 +374,18 @@ async function sendTopPlayers() {
 
     embed.setDescription(desc);
 
-    await channel.send({
-      embeds: [embed]
-    });
+    if (!playersMessage) {
+
+      playersMessage = await channel.send({
+        embeds: [embed]
+      });
+
+    } else {
+
+      await playersMessage.edit({
+        embeds: [embed]
+      });
+    }
 
   } catch (err) {
     console.log(err);
@@ -464,60 +419,95 @@ async function sendPlayoffBracket() {
 
     const embed = new EmbedBuilder()
       .setTitle("🏆 NHL PLAYOFF BRACKET")
+      .setColor(0xff9900)
       .setThumbnail(
         "https://upload.wikimedia.org/wikipedia/en/3/3a/05_NHL_Shield.svg"
       )
-      .setColor(0xff9900)
       .setFooter({
         text: "NHL Playoffs"
       })
       .setTimestamp();
 
-    let desc = "🌎 EASTERN\n\n";
+    const desc = `
+🏆 EASTERN
 
-    desc +=
-`${east[0].teamAbbrev.default} vs ${east[7].teamAbbrev.default}
-${east[1].teamAbbrev.default} vs ${east[6].teamAbbrev.default}
-${east[2].teamAbbrev.default} vs ${east[5].teamAbbrev.default}
-${east[3].teamAbbrev.default} vs ${east[4].teamAbbrev.default}
+${east[0].teamAbbrev.default} ─┐
+              ├── TBD
+${east[7].teamAbbrev.default} ─┘
 
+${east[1].teamAbbrev.default} ─┐
+              ├── TBD
+${east[6].teamAbbrev.default} ─┘
+
+${east[2].teamAbbrev.default} ─┐
+              ├── TBD
+${east[5].teamAbbrev.default} ─┘
+
+${east[3].teamAbbrev.default} ─┐
+              ├── TBD
+${east[4].teamAbbrev.default} ─┘
+
+
+🌎 WESTERN
+
+${west[0].teamAbbrev.default} ─┐
+              ├── TBD
+${west[7].teamAbbrev.default} ─┘
+
+${west[1].teamAbbrev.default} ─┐
+              ├── TBD
+${west[6].teamAbbrev.default} ─┘
+
+${west[2].teamAbbrev.default} ─┐
+              ├── TBD
+${west[5].teamAbbrev.default} ─┘
+
+${west[3].teamAbbrev.default} ─┐
+              ├── TBD
+${west[4].teamAbbrev.default} ─┘
 `;
-
-    desc += "🌎 WESTERN\n\n";
-
-    desc +=
-`${west[0].teamAbbrev.default} vs ${west[7].teamAbbrev.default}
-${west[1].teamAbbrev.default} vs ${west[6].teamAbbrev.default}
-${west[2].teamAbbrev.default} vs ${west[5].teamAbbrev.default}
-${west[3].teamAbbrev.default} vs ${west[4].teamAbbrev.default}`;
 
     embed.setDescription(desc);
 
-    await channel.send({
-      embeds: [embed]
-    });
+    if (!playoffsMessage) {
+
+      playoffsMessage = await channel.send({
+        embeds: [embed]
+      });
+
+    } else {
+
+      await playoffsMessage.edit({
+        embeds: [embed]
+      });
+    }
 
   } catch (err) {
     console.log(err);
   }
 }
 
-// ✅ READY
+// ✅ BOT READY
 client.once("clientReady", () => {
 
   console.log(`✅ Bot connecté: ${client.user.tag}`);
 
+  // 🚀 START
   updateLiveMatches();
   sendStandings();
   sendTopPlayers();
   sendPlayoffBracket();
 
+  // 🔴 LIVE
   setInterval(updateLiveMatches, 30000);
 
+  // 🏆 STATS
   setInterval(sendStandings, 3600000);
 
+  // ⭐ PLAYERS
   setInterval(sendTopPlayers, 3600000);
 
+  // 🏆 PLAYOFFS
   setInterval(sendPlayoffBracket, 3600000);
 });
 
